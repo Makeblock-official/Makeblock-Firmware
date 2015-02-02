@@ -1,9 +1,9 @@
 /*************************************************************************
-* File Name          : Firmware.ino
+* File Name          : Mbot_Firmware.ino
 * Author             : Ander
 * Updated            : Ander
-* Version            : V1.10101
-* Date               : 03/06/2014
+* Version            : V1.20101
+* Date               : 12/29/2014
 * Description        : Firmware for Makeblock Electronic modules with Scratch.  
 * License            : CC-BY-SA 3.0
 * Copyright (C) 2013 - 2014 Maker Works Technology Co., Ltd. All right reserved.
@@ -12,17 +12,18 @@
 #include <Servo.h>
 #include <Wire.h>
 #include "MePort.h"
-#include "MeServo.h" 
 #include "MeDCMotor.h" 
 #include "MeUltrasonic.h" 
-#include "MeGyro.h"
 #include "Me7SegmentDisplay.h"
 #include "MeTemperature.h"
 #include "MeRGBLed.h"
 #include "MeInfraredReceiver.h"
-#include "MeStepper.h"
-#include "MeEncoderMotor.h"
+#include "MeIR.h"
+#include "mBot.h"
 
+MeBoard myBoard(mBot);
+
+MeBuzzer buzzer;
 Servo servo;  
 MeDCMotor dc;
 MeTemperature ts;
@@ -30,10 +31,7 @@ MeRGBLed led;
 MeUltrasonic us;
 Me7SegmentDisplay seg;
 MePort generalDevice;
-MeInfraredReceiver ir;
-MeGyro gyro;
-MeStepper steppers[2];
-MeEncoderMotor encoders[2];
+MeIR ir;
 typedef struct MeModule
 {
     int device;
@@ -65,7 +63,7 @@ int analogs[12]={A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11};
 #else
 int analogs[8]={A0,A1,A2,A3,A4,A5,A6,A7};
 #endif
-String mVersion = "1.1.102";
+String mVersion = "1.2.103";
 boolean isAvailable = false;
 boolean isBluetooth = false;
 
@@ -76,7 +74,6 @@ byte index = 0;
 byte dataLen;
 byte modulesLen=0;
 boolean isStart = false;
-unsigned char irRead;
 char serialRead;
 #define VERSION 0
 #define ULTRASONIC_SENSOR 1
@@ -92,9 +89,11 @@ char serialRead;
 #define SERVO 11
 #define ENCODER 12
 #define IR 13
+#define IRREMOTE 14
 #define PIRMOTION 15
 #define INFRARED 16
 #define LINEFOLLOWER 17
+#define IRREMOTECODE 18
 #define SHUTTER 20
 #define LIMITSWITCH 21
 #define BUTTON 22
@@ -103,8 +102,7 @@ char serialRead;
 #define PWM 32
 #define SERVO_PIN 33
 #define TONE 34
-#define STEPPER 40
-#define ENCODER 41
+#define BUTTON_INNER 35
 #define TIMER 50
 
 #define GET 1
@@ -112,48 +110,68 @@ char serialRead;
 #define RESET 4
 #define START 5
 float angleServo = 90.0;
-unsigned char prevc=0;
-double lastTime = 0.0;
-double currentTime = 0.0;
 
+unsigned char prevc=0;
 void setup(){
   pinMode(13,OUTPUT);
   digitalWrite(13,HIGH);
   delay(300);
   digitalWrite(13,LOW);
   Serial.begin(115200);
-//  delay(500);
-//  buzzerOn();
-//  delay(100);
-//  buzzerOff();
-  
-  steppers[0] = MeStepper();
-  steppers[1] = MeStepper();
-  encoders[0] = MeEncoderMotor(SLOT_1);
-  encoders[1] = MeEncoderMotor(SLOT_2);
-  encoders[0].begin();
-  encoders[1].begin();
   delay(500);
-  encoders[0].runSpeed(0);
-  encoders[1].runSpeed(0);
+  buzzerOn();
+  delay(50);
+  buzzerOff();
+  ir.begin();
+  led.reset(13);
+  led.setNumber(2);
+  led.setColor(0,0,0);
+  led.show();
 }
+int irDelay = 0;
+int irIndex = 0;
+char irRead = 0;
+boolean irReady = false;
+String irBuffer = "";
+double lastTime = 0.0;
+double currentTime = 0.0;
+double lastIRTime = 0.0;
+boolean buttonPressed = false;
+boolean irPressed = false;
 void loop(){
   currentTime = millis()/1000.0-lastTime;
-  if(ir.buttonState()==1){ 
-    if(ir.available()>0){
-      irRead = ir.read();
+  if(ir.decode())
+  {
+    irRead = ((ir.value>>8)>>8)&0xff;
+    lastIRTime = millis()/1000.0;
+    irPressed = true;
+    if(irRead==0xa||irRead==0xd){
+      irIndex = 0;
+      irReady = true;
+    }else{
+      irBuffer+=irRead; 
+      irIndex++;
+      if(irIndex>64){
+        irIndex = 0;
+        irBuffer = "";
+      }
     }
+    irDelay = 0;
   }else{
-    irRead = 0;
+    irDelay++;
+    if(irRead>0){
+     if(irDelay>5000){
+      irRead = 0;
+      irDelay = 0;
+     }
+   }
   }
   readSerial();
-  steppers[0].run();
-  steppers[1].run();
   if(isAvailable){
     unsigned char c = serialRead&0xff;
     if(c==0x55&&isStart==false){
      if(prevc==0xff){
-      index=1;
+      index=1; 
       isStart = true;
      }
     }else{
@@ -178,6 +196,12 @@ void loop(){
         index=0;
      }
   }
+}
+void buzzerOn(){
+  buzzer.tone(500); 
+}
+void buzzerOff(){
+  buzzer.noTone(); 
 }
 unsigned char readBuffer(int index){
  return isBluetooth?bufferBt[index]:buffer[index]; 
@@ -208,8 +232,8 @@ void readSerial(){
   }
 }
 /*
-ff 55 len idx action device port  slot  data a
-0  1  2   3   4      5      6     7     8
+ff 55 len idx action device port slot data a
+0  1  2   3   4      5      6    7    8
 */
 void parseData(){
   isStart = false;
@@ -235,12 +259,8 @@ void parseData(){
         dc.run(0);
         dc.reset(M2);
         dc.run(0);
-        dc.reset(PORT_1);
-        dc.run(0);
-        dc.reset(PORT_2);
-        dc.run(0);
-        encoders[0].runSpeed(0);
-        encoders[1].runSpeed(0);
+        buzzerOff();
+        
         callOK();
       }
      break;
@@ -268,8 +288,9 @@ void sendString(String s){
     writeSerial(s.charAt(i));
   }
 }
+//1 byte 2 float 3 short 4 len+string 5 double
 void sendFloat(float value){ 
-     writeSerial(0x2);
+     writeSerial(2);
      val.floatVal = value;
      writeSerial(val.byteVal[0]);
      writeSerial(val.byteVal[1]);
@@ -285,12 +306,16 @@ void sendShort(double value){
      writeSerial(valShort.byteVal[3]);
 }
 void sendDouble(double value){
-     writeSerial(2);
+     writeSerial(5);
      valDouble.doubleVal = value;
      writeSerial(valDouble.byteVal[0]);
      writeSerial(valDouble.byteVal[1]);
      writeSerial(valDouble.byteVal[2]);
      writeSerial(valDouble.byteVal[3]);
+     writeSerial(valDouble.byteVal[4]);
+     writeSerial(valDouble.byteVal[5]);
+     writeSerial(valDouble.byteVal[6]);
+     writeSerial(valDouble.byteVal[7]);
 }
 short readShort(int idx){
   valShort.byteVal[0] = readBuffer(idx);
@@ -305,61 +330,28 @@ float readFloat(int idx){
   return val.floatVal;
 }
 void runModule(int device){
-  //0xff 0x55 0x6 0x0 0x1 0xa 0x9 0x0 0x0 0xa 
+  //0xff 0x55 0x6 0x0 0x2 0x22 0x9 0x0 0x0 0xa 
   int port = readBuffer(6);
   int pin = port;
   switch(device){
    case MOTOR:{
-     valShort.byteVal[0] = readBuffer(7);
-     valShort.byteVal[1] = readBuffer(8);
-     int speed = valShort.shortVal;
-     dc.reset(port);
+     int speed = readShort(7);
+     if(dc.getPort()!=port){
+       dc.reset(port);
+     }
      dc.run(speed);
    } 
-    break;
-    case STEPPER:{
-     valShort.byteVal[0] = readBuffer(7);
-     valShort.byteVal[1] = readBuffer(8);
-     int maxSpeed = valShort.shortVal;
-     valShort.byteVal[0] = readBuffer(9);
-     valShort.byteVal[1] = readBuffer(10);
-     int distance = valShort.shortVal;
-     if(port==PORT_1){
-      steppers[0] = MeStepper(PORT_1);
-      steppers[0].setMaxSpeed(maxSpeed);
-      steppers[0].moveTo(distance);
-     }else if(port==PORT_2){
-      steppers[1] = MeStepper(PORT_2);
-      steppers[1].setMaxSpeed(maxSpeed);
-      steppers[1].moveTo(distance);
-     }
-   } 
-    break;
-    case ENCODER:{
-      valShort.byteVal[0] = readBuffer(7);
-      valShort.byteVal[1] = readBuffer(8);
-      int maxSpeed = valShort.shortVal;
-      valShort.byteVal[0] = readBuffer(9);
-      valShort.byteVal[1] = readBuffer(10);
-      int distance = valShort.shortVal;
-      int slot = port;
-      if(slot==SLOT_1){
-         encoders[0].move(distance,maxSpeed);
-      }else if(slot==SLOT_2){
-         encoders[1].move(distance,maxSpeed);
-      }
-    }
     break;
    case RGBLED:{
      int idx = readBuffer(7);
      int r = readBuffer(8);
      int g = readBuffer(9);
      int b = readBuffer(10);
-     led.reset(port);
+     led.reset((MEPORT)port);
      if(idx>0){
        led.setColorAt(idx-1,r,g,b); 
      }else{
-        led.setColor(r,g,b); 
+       led.setColor(r,g,b); 
      }
      led.show();
    }
@@ -376,7 +368,7 @@ void runModule(int device){
    break;
    case SEVSEG:{
      if(seg.getPort()!=port){
-       seg.reset(port);
+       seg.reset((MEPORT)port);
      }
      float v = readFloat(7);
      seg.display(v);
@@ -388,6 +380,15 @@ void runModule(int device){
      }
      int v = readBuffer(7);
      generalDevice.dWrite1(v);
+   }
+   break;
+   case IR:{
+     int len = readBuffer(2)-3;
+     String s ="";
+     for(int i=0;i<len;i++){
+       s+=(char)readBuffer(6+i);
+     }
+     ir.sendString(s);
    }
    break;
    case SHUTTER:{
@@ -415,13 +416,12 @@ void runModule(int device){
    }
    break;
    case TONE:{
-     pinMode(pin,OUTPUT);
-     int hz = readShort(7);
-     int ms = readShort(9);
-     if(ms>0){
-       tone(pin, hz, ms); 
+//     pinMode(pin,OUTPUT);
+     int hz = readShort(6);
+     if(hz>0){
+       buzzer.tone(hz); 
      }else{
-       noTone(pin); 
+       buzzer.noTone(); 
      }
    }
    break;
@@ -441,8 +441,9 @@ void runModule(int device){
 }
 void readSensor(int device){
   /**************************************************
-      ff 55 len idx action device port slot data a
-      0  1  2   3   4      5      6    7    8
+      ff    55      len idx action device port slot data a
+      0     1       2   3   4      5      6    7    8
+      0xff  0x55   0x4 0x3 0x1    0x1    0x1  0xa 
   ***************************************************/
   float value=0.0;
   int port,slot,pin;
@@ -453,7 +454,7 @@ void readSensor(int device){
      if(us.getPort()!=port){
        us.reset(port);
      }
-     value = us.distanceCm();
+     value = (float)us.distanceCm();
      sendFloat(value);
    }
    break;
@@ -493,11 +494,32 @@ void readSensor(int device){
      }
    }
    break;
-   case  INFRARED:{
-     if(ir.getPort()!=port){
-       ir.reset(port);
+   case  IR:{
+//     if(ir.getPort()!=port){
+//       ir.reset(port);
+//     }
+      if(irReady){
+         sendString(irBuffer);
+         irReady = false;
+         irBuffer = "";
+      }
+   }
+   break;
+   case IRREMOTE:{
+     unsigned char r = readBuffer(7);
+     if(millis()/1000.0-lastIRTime>0.2){
+       sendByte(0);
+     }else{
+       sendByte(irRead==r);
      }
-     sendFloat(irRead);
+     //irRead = 0;
+     irIndex = 0;
+   }
+   break;
+   case IRREMOTECODE:{
+     sendByte(irRead);
+     irRead = 0;
+     irIndex = 0;
    }
    break;
    case  PIRMOTION:{
@@ -534,19 +556,28 @@ void readSensor(int device){
      sendFloat(value);  
    }
    break;
+   case BUTTON_INNER:{
+     pin = analogs[pin];
+     char s = readBuffer(7);
+     pinMode(pin,INPUT);
+     boolean currentPressed = !(analogRead(pin)>10);
+     sendByte(s^(currentPressed?1:0));
+     buttonPressed = currentPressed;
+   }
+   break;
    case  GYRO:{
-       int axis = readBuffer(7);
-       gyro.update();
-       if(axis==1){
-         value = gyro.getAngleX();
-         sendFloat(value);
-       }else if(axis==2){
-         value = gyro.getAngleY();
-         sendFloat(value);
-       }else if(axis==3){
-         value = gyro.getAngleZ();
-         sendFloat(value);
-       }
+//       int axis = readBuffer(7);
+//       gyro.update();
+//       if(axis==1){
+//         value = gyro.getAngleX();
+//         sendFloat(value);
+//       }else if(axis==2){
+//         value = gyro.getAngleY();
+//         sendFloat(value);
+//       }else if(axis==3){
+//         value = gyro.getAngleZ();
+//         sendFloat(value);
+//       }
    }
    break;
    case  VERSION:{
@@ -565,7 +596,7 @@ void readSensor(int device){
    }
    break;
    case TIMER:{
-     sendFloat((float)currentTime);
+     sendFloat(currentTime);
    }
    break;
   }
