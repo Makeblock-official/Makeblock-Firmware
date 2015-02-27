@@ -21,8 +21,9 @@
 #include "MeRGBLed.h"
 #include "MeInfraredReceiver.h"
 #include "MeStepper.h"
-#include "MeEncoderMotor.h"
-
+#if defined(__AVR_ATmega328P__)
+  #include "MeEncoderMotor.h"
+#endif
 Servo servo;  
 MeDCMotor dc;
 MeTemperature ts;
@@ -33,7 +34,6 @@ MePort generalDevice;
 MeInfraredReceiver ir;
 MeGyro gyro;
 MeStepper steppers[2];
-MeEncoderMotor encoders[2];
 typedef struct MeModule
 {
     int device;
@@ -61,11 +61,12 @@ union{
 }valShort;
 MeModule modules[12];
 #if defined(__AVR_ATmega32U4__) 
-int analogs[12]={A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11};
+  int analogs[12]={A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11};
 #else
-int analogs[8]={A0,A1,A2,A3,A4,A5,A6,A7};
+  int analogs[8]={A0,A1,A2,A3,A4,A5,A6,A7};
+  MeEncoderMotor encoders[2];
 #endif
-String mVersion = "1.1.102";
+String mVersion = "1.1.103";
 boolean isAvailable = false;
 boolean isBluetooth = false;
 
@@ -90,7 +91,7 @@ char serialRead;
 #define SEVSEG 9
 #define MOTOR 10
 #define SERVO 11
-#define ENCODER 12
+//#define ENCODER 12
 #define IR 13
 #define PIRMOTION 15
 #define INFRARED 16
@@ -126,16 +127,19 @@ void setup(){
 //  buzzerOn();
 //  delay(100);
 //  buzzerOff();
-  
   steppers[0] = MeStepper();
   steppers[1] = MeStepper();
-  encoders[0] = MeEncoderMotor(SLOT_1);
-  encoders[1] = MeEncoderMotor(SLOT_2);
-  encoders[0].begin();
-  encoders[1].begin();
-  delay(500);
-  encoders[0].runSpeed(0);
-  encoders[1].runSpeed(0);
+  #if defined(__AVR_ATmega328P__)
+    encoders[0] = MeEncoderMotor(SLOT_1);
+    encoders[1] = MeEncoderMotor(SLOT_2);
+    encoders[0].begin();
+    encoders[1].begin();
+    delay(500);
+    encoders[0].runSpeed(0);
+    encoders[1].runSpeed(0);
+  #else
+    Serial1.begin(115200);
+  #endif
 }
 void loop(){
   currentTime = millis()/1000.0-lastTime;
@@ -195,9 +199,15 @@ void writeHead(){
 }
 void writeEnd(){
  Serial.println(); 
+ #if defined(__AVR_ATmega32U4__) 
+   Serial1.println();
+ #endif
 }
 void writeSerial(unsigned char c){
  Serial.write(c);
+ #if defined(__AVR_ATmega32U4__) 
+   Serial1.write(c);
+ #endif
 }
 void readSerial(){
   isAvailable = false;
@@ -206,6 +216,13 @@ void readSerial(){
     isBluetooth = false;
     serialRead = Serial.read();
   }
+  #if defined(__AVR_ATmega32U4__) 
+  if(Serial1.available()>0){
+    isAvailable = true;
+    isBluetooth = true;
+    serialRead = Serial1.read();
+  }
+ #endif
 }
 /*
 ff 55 len idx action device port  slot  data a
@@ -239,8 +256,11 @@ void parseData(){
         dc.run(0);
         dc.reset(PORT_2);
         dc.run(0);
-        encoders[0].runSpeed(0);
-        encoders[1].runSpeed(0);
+        
+        #if defined(__AVR_ATmega328P__)
+          encoders[0].runSpeed(0);
+          encoders[1].runSpeed(0);
+        #endif
         callOK();
       }
      break;
@@ -310,20 +330,14 @@ void runModule(int device){
   int pin = port;
   switch(device){
    case MOTOR:{
-     valShort.byteVal[0] = readBuffer(7);
-     valShort.byteVal[1] = readBuffer(8);
-     int speed = valShort.shortVal;
+     int speed = readShort(7);
      dc.reset(port);
      dc.run(speed);
    } 
     break;
     case STEPPER:{
-     valShort.byteVal[0] = readBuffer(7);
-     valShort.byteVal[1] = readBuffer(8);
-     int maxSpeed = valShort.shortVal;
-     valShort.byteVal[0] = readBuffer(9);
-     valShort.byteVal[1] = readBuffer(10);
-     int distance = valShort.shortVal;
+     int maxSpeed = readShort(7);
+     int distance = readShort(9);
      if(port==PORT_1){
       steppers[0] = MeStepper(PORT_1);
       steppers[0].setMaxSpeed(maxSpeed);
@@ -336,18 +350,16 @@ void runModule(int device){
    } 
     break;
     case ENCODER:{
-      valShort.byteVal[0] = readBuffer(7);
-      valShort.byteVal[1] = readBuffer(8);
-      int maxSpeed = valShort.shortVal;
-      valShort.byteVal[0] = readBuffer(9);
-      valShort.byteVal[1] = readBuffer(10);
-      int distance = valShort.shortVal;
+      int maxSpeed = readShort(7);
+      int distance = readShort(9);
       int slot = port;
-      if(slot==SLOT_1){
-         encoders[0].move(distance,maxSpeed);
-      }else if(slot==SLOT_2){
-         encoders[1].move(distance,maxSpeed);
-      }
+      #if defined(__AVR_ATmega328P__)
+        if(slot==SLOT_1){
+           encoders[0].move(distance,maxSpeed);
+        }else if(slot==SLOT_2){
+           encoders[1].move(distance,maxSpeed);
+        }
+      #endif
     }
     break;
    case RGBLED:{

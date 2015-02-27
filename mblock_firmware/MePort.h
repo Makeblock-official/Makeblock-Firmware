@@ -18,8 +18,6 @@ typedef struct
 } MePort_Sig;
 extern MePort_Sig mePort[11];//mePort[0] is nonsense
 
-struct cRGB { uint8_t g; uint8_t r; uint8_t b; };
-
 #define NC 					-1
 
 #define PORT_1 				0x01
@@ -32,7 +30,11 @@ struct cRGB { uint8_t g; uint8_t r; uint8_t b; };
 #define PORT_8 				0x08
 #define M1     				0x09
 #define M2     				0x0a
-
+struct cRGB { 
+  uint8_t g; 
+  uint8_t r; 
+  uint8_t b; 
+};
 #if defined(__AVR_ATmega32U4__) 
 // buzzer 
 #define buzzerOn()  DDRE |= 0x04,PORTE |= B00000100

@@ -46,3 +46,16 @@ unsigned char MeInfraredReceiver::poll()
     //interrupts();
     return 0;
 }
+unsigned char MeInfraredReceiver::getCode(){
+	return _irCode;
+}
+void MeInfraredReceiver::loop()
+{
+	if(buttonState()==1){ 
+		if(available()>0){
+			_irCode = read();
+		}
+	}else{
+		_irCode = 0;
+	}
+}

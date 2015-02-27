@@ -9,7 +9,6 @@ public:
 	MeRGBLed(uint8_t port,uint8_t slot);
 	~MeRGBLed();
 	void reset(uint8_t port);
-	void reset(uint8_t port,uint8_t slot);
 	///@brief set the count of leds.
 	void setNumber(uint8_t num_led);
 	///@brief get the count of leds.
@@ -18,8 +17,9 @@ public:
 	cRGB getColorAt(uint8_t index);
 	///@brief set the rgb value of the led with the index.
 	bool setColorAt(uint8_t index, uint8_t red,uint8_t green,uint8_t blue);
-	bool setColorAt(uint8_t index, long value);
+	bool setColor(uint8_t index, uint8_t red,uint8_t green,uint8_t blue);
 	bool setColor(uint8_t red,uint8_t green,uint8_t blue);
+	bool setColorAt(uint8_t index, long value);
 	///@brief become effective of all led's change.
 	void show();
 	

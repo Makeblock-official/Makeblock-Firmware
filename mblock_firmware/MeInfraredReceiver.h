@@ -7,9 +7,12 @@ class MeInfraredReceiver:public MePort{
 		MeInfraredReceiver(uint8_t port);
 		int available();
 		unsigned char read();
+		unsigned char getCode();
 		unsigned char poll();
 		bool buttonState();
+		void loop();
 	private:
+		unsigned char _irCode;
 		unsigned char _buffer; 
 };
 #endif

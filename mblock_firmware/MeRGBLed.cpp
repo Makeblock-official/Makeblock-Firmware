@@ -1,6 +1,6 @@
 #include "MeRGBLed.h"
 MeRGBLed::MeRGBLed():MePort(0) {
-	setNumber(16);
+	setNumber(32);
 }
 MeRGBLed::MeRGBLed(uint8_t port):MePort(port) {
 	pinMask = digitalPinToBitMask(s2);
@@ -8,7 +8,7 @@ MeRGBLed::MeRGBLed(uint8_t port):MePort(port) {
 	ws2812_port_reg = portModeRegister(digitalPinToPort(s2));
 //	*ws2812_port_reg |= pinMask; //set pinMode OUTPUT
         pinMode(s2,OUTPUT);
-	setNumber(16);
+	setNumber(32);
 }
 MeRGBLed::MeRGBLed(uint8_t port,uint8_t slot):MePort(port){
 	if(slot==1){
@@ -23,23 +23,12 @@ MeRGBLed::MeRGBLed(uint8_t port,uint8_t slot):MePort(port){
                 pinMode(s1,OUTPUT);
 	}
 	//*ws2812_port_reg |= pinMask; // set pinMode OUTPUT
-	setNumber(16);
+	setNumber(32);
 }
 void MeRGBLed::reset(uint8_t port){
         _port = port;
 	s2 = mePort[port].s2;
 	s1 = mePort[port].s1;
-	pinMask = digitalPinToBitMask(s2);
-	ws2812_port = portOutputRegister(digitalPinToPort(s2));
-	ws2812_port_reg = portModeRegister(digitalPinToPort(s2));
-        //*ws2812_port_reg |= pinMask;
-        pinMode(s2,OUTPUT);
-}
-void MeRGBLed::reset(uint8_t port,uint8_t slot){
-        _port = port;
-        _slot = slot;
-	s2 = slot==1?mePort[port].s2:mePort[port].s1;
-	s1 = slot==1?mePort[port].s1:mePort[port].s2;
 	pinMask = digitalPinToBitMask(s2);
 	ws2812_port = portOutputRegister(digitalPinToPort(s2));
 	ws2812_port_reg = portModeRegister(digitalPinToPort(s2));
@@ -84,12 +73,24 @@ bool MeRGBLed::setColorAt(uint8_t index, uint8_t red,uint8_t green,uint8_t blue)
 	} 
 	return false;
 }
-
+bool MeRGBLed::setColor(uint8_t index, uint8_t red,uint8_t green,uint8_t blue) {
+	if(index==0){
+		for(int i=0;i<count_led;i++) {
+			setColorAt(i,red,green,blue);
+		}
+		return true;
+	}else if(index < count_led) {
+		uint8_t tmp = (index-1) * 3;
+		pixels[tmp] = green;
+		pixels[tmp+1] = red;
+		pixels[tmp+2] = blue;
+		
+		return true;
+	} 
+	return false;
+}
 bool MeRGBLed::setColor(uint8_t red,uint8_t green,uint8_t blue) {
-  for(uint8_t i=0;i<count_led;i++){
-    setColorAt(i,red,green,blue);
-  }
-  return true;
+	return setColor(0,red,green,blue);;
 }
 bool MeRGBLed::setColorAt(uint8_t index, long value) {
 	if(index < count_led) {
