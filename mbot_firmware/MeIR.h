@@ -123,6 +123,8 @@ class MeIR
 		ErrorStatus decode();
 		void begin();
 		void end();
+		void loop();
+		boolean keyPressed(unsigned char r);
 		// void resume();
 		int8_t decode_type; // NEC, SONY, RC5, UNKNOWN
 		unsigned long value; // Decoded value
@@ -158,7 +160,10 @@ class MeIR
                 int irIndex;
                 char irRead;
                 boolean irReady;
+                boolean irPressed;
                 String irBuffer;
+                double lastIRTime;
+                char floatString[5];
 		
 };
 

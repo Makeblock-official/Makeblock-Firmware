@@ -89,6 +89,13 @@ void MeIR::begin()
   irparams.rcvstate = STATE_IDLE;
   irparams.rawlen = 0;
 
+  lastIRTime = 0.0;
+  irDelay = 0;
+  irIndex = 0;
+  irRead = 0;
+  irReady = false;
+  irBuffer = "";
+  irPressed = false;
   // set pin modes
   // pinMode(2, INPUT);
   // pinMode(irparams.recvpin, INPUT);
@@ -260,10 +267,8 @@ void MeIR::sendString(String s){
 }
 
 void MeIR::sendString(float v){
-  unsigned long l;
-  char *s;
-  dtostrf(v,5, 2, s);
-  sendString(s);
+  dtostrf(v,5, 2, floatString);
+  sendString(floatString);
 }
 void MeIR::sendNEC(unsigned long data, int nbits)
 {
@@ -283,4 +288,39 @@ void MeIR::sendNEC(unsigned long data, int nbits)
   }
   mark(NEC_BIT_MARK);
   space(0);
+}
+void MeIR::loop(){
+  if(decode())
+  {
+    irRead = ((value>>8)>>8)&0xff;
+    lastIRTime = millis()/1000.0;
+    irPressed = true;
+    if(irRead==0xa||irRead==0xd){
+      irIndex = 0;
+      irReady = true;
+    }else{
+      irBuffer+=irRead; 
+      irIndex++;
+      if(irIndex>64){
+        irIndex = 0;
+        irBuffer = "";
+      }
+    }
+    irDelay = 0;
+  }else{
+    irDelay++;
+    if(irRead>0){
+     if(irDelay>5000){
+      irRead = 0;
+      irDelay = 0;
+     }
+   }
+  }
+}
+boolean MeIR::keyPressed(unsigned char r){
+	irIndex = 0;
+     if(millis()/1000.0-lastIRTime>0.2){
+       return false;
+     }
+	 return irRead==r;
 }
