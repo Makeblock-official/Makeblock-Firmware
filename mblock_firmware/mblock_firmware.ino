@@ -14,6 +14,7 @@
 #include "MePort.h"
 #include "MeServo.h" 
 #include "MeDCMotor.h" 
+#include "MeEncoderMotor.h" 
 #include "MeUltrasonic.h" 
 #include "MeGyro.h"
 #include "Me7SegmentDisplay.h"
